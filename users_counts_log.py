@@ -6,7 +6,7 @@ from collections import defaultdict, Counter
 from datetime import datetime, timedelta
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Group user messages by time periods.")
+    parser = argparse.ArgumentParser(description="Group Telegram user messages by time periods. Example: python3 users_counts_log.py --period month --begin '2025-01-01' --min 100 --include-others data/2025-04-04.json")
     parser.add_argument("json_filename", help="Path to the JSON file")
     parser.add_argument("--period", choices=["year", "month", "week", "day"], required=True, help="Time grouping unit")
     parser.add_argument("--begin", help="Start date in YYYY-MM-DD")
@@ -25,6 +25,19 @@ def get_time_key(dt, period):
         return monday.strftime("%Y W%U")
     elif period == "day":
         return dt.strftime("%Y-%m-%d")
+
+def parse_time_key(key, period):
+    try:
+        if period == "year":
+            return datetime.strptime(key, "%Y")
+        elif period == "month":
+            return datetime.strptime(key, "%Y %B")
+        elif period == "week":
+            return datetime.strptime(key + " 1", "%Y W%U %w")  # Add weekday for parsing
+        elif period == "day":
+            return datetime.strptime(key, "%Y-%m-%d")
+    except ValueError:
+        return datetime.max
 
 def main():
     args = parse_args()
@@ -69,7 +82,8 @@ def main():
     included_users = [user for user, count in total_user_counts.items() if count >= args.min]
     included_users.sort(key=lambda u: total_user_counts[u], reverse=True)
 
-    time_keys = sorted(user_time_counts.keys())
+    # Sort time keys chronologically
+    time_keys = sorted(user_time_counts.keys(), key=lambda x: parse_time_key(x, args.period))
 
     writer = csv.writer(sys.stdout)
     header = ["Period"] + included_users
