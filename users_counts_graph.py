@@ -4,6 +4,7 @@ from collections import defaultdict, Counter
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Group user messages by time periods.")
@@ -102,10 +103,23 @@ def main():
     df = df.sort_values(by="Period", key=lambda col: col.map(lambda x: parse_time_key(x, args.period)))
     df.set_index("Period", inplace=True)
 
-    df.plot.area(stacked=True, figsize=(14, 7), cmap="tab20")
-    plt.title("Messages per Time Period by User")
-    plt.xlabel("Time Period")
-    plt.ylabel("Message Count")
+    fig, ax = plt.subplots(figsize=(14, 7))
+    df.plot.area(ax=ax, stacked=True, cmap="tab20")
+
+    cum_values = np.zeros(len(df))
+    for col in df.columns:
+        heights = df[col].values
+        midpoints = cum_values + heights / 2
+        max_idx = np.argmax(heights)
+        ax.text(max_idx, midpoints[max_idx], col, fontsize=8, ha='center', va='center', alpha=0.8)
+        cum_values += heights
+
+    ax.set_title("Messages per Time Period by User")
+    ax.set_xlabel("Time Period")
+    ax.set_ylabel("Message Count")
+    ax.legend().remove()
+
+    plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig(args.output)
     print(f"Chart saved to {args.output}")
