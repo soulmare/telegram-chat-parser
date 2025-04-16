@@ -104,14 +104,17 @@ def main():
     df.set_index("Period", inplace=True)
 
     fig, ax = plt.subplots(figsize=(14, 7))
-    df.plot.area(ax=ax, stacked=True, cmap="tab20")
+    colormap = plt.cm.tab20
+    df.plot.area(ax=ax, stacked=True, cmap=colormap)
 
     cum_values = np.zeros(len(df))
-    for col in df.columns:
+    for idx, col in enumerate(df.columns):
         heights = df[col].values
         midpoints = cum_values + heights / 2
         max_idx = np.argmax(heights)
-        ax.text(max_idx, midpoints[max_idx], col, fontsize=8, ha='center', va='center', alpha=0.8)
+        ax.text(max_idx, midpoints[max_idx], col, fontsize=8, ha='center', va='center', alpha=0.8,
+                backgroundcolor='white', color='black', weight='bold')
+                # backgroundcolor='white', color=colormap(idx / len(df.columns)), weight='bold')
         cum_values += heights
 
     ax.set_title("Messages per Time Period by User")
