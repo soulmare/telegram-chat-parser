@@ -6,10 +6,8 @@ from datetime import datetime
 import matplotlib.colors as mcolors
 import matplotlib.cm as cmx
 
-# Define colors here for easy editing
 NODE_COLOR = "lightgreen"
 TEXT_COLOR = "#444444"
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Build and plot a user reply graph from Telegram CSV data.")
@@ -20,6 +18,11 @@ def parse_args():
     parser.add_argument("--from-date", type=str, help="Start date (inclusive) in YYYY-MM-DD format")
     parser.add_argument("--to-date", type=str, help="End date (inclusive) in YYYY-MM-DD format")
     parser.add_argument("--min-replies", type=int, default=0, help="Minimum number of replies between users to be included in the graph")
+    parser.add_argument(
+        "--nick",
+        action="append",
+        help="Override user names by specifying user_id:nickname (can be used multiple times)"
+    )
     return parser.parse_args()
 
 
@@ -29,8 +32,18 @@ def main():
     from_date = datetime.strptime(args.from_date, "%Y-%m-%d") if args.from_date else None
     to_date = datetime.strptime(args.to_date, "%Y-%m-%d") if args.to_date else None
 
-    reply_counts = {}  # (user_a, user_b) => count
-    user_names = {}    # from_id => name
+    # Parse nickname overrides
+    nickname_overrides = {}
+    if args.nick:
+        for item in args.nick:
+            try:
+                user_id, nickname = item.split(":", 1)
+                nickname_overrides[user_id] = nickname.replace("\\n", "\n")
+            except ValueError:
+                print(f"Invalid nickname format: {item}, expected format user_id:nickname")
+
+    reply_counts = {}         # (user_a, user_b) => count
+    user_names = {}           # from_id => name
     user_message_counts = {}  # from_id => message count
 
     with open(args.csv_filename, newline='', encoding='utf-8') as csvfile:
@@ -62,11 +75,12 @@ def main():
             if not reply_user_id or from_id == reply_user_id:
                 continue
 
-            user_names[from_id] = from_name or from_id
+            # Apply nickname overrides
+            user_names[from_id] = nickname_overrides.get(from_id, from_name or from_id)
             if reply_user_id not in user_names:
                 reply_user_name = row.get("reply_user_name")
-                if reply_user_name:
-                    user_names[reply_user_id] = reply_user_name
+                if reply_user_name or reply_user_id in nickname_overrides:
+                    user_names[reply_user_id] = nickname_overrides.get(reply_user_id, reply_user_name)
 
             key = tuple(sorted((from_id, reply_user_id)))
             reply_counts[key] = reply_counts.get(key, 0) + 1
@@ -123,7 +137,6 @@ def main():
     print(f"Graph saved to {args.output}")
     # print(user_names)
     # print(reply_counts)
-
 
 if __name__ == "__main__":
     main()
