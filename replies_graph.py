@@ -16,11 +16,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Build and plot a user reply graph from Telegram CSV data.")
     parser.add_argument("csv_filename", help="Path to the CSV file generated from Telegram JSON")
     parser.add_argument("--show-edge-labels", action="store_true", help="Display edge labels with reply counts")
-    parser.add_argument("--min-messages", type=int, default=0, help="Minimum number of messages for a user to be included in the plot")
     parser.add_argument("--from-date", type=str, help="Start date (inclusive) in YYYY-MM-DD format")
     parser.add_argument("--to-date", type=str, help="End date (inclusive) in YYYY-MM-DD format")
-    parser.add_argument("--min-replies", type=int, default=0, help="Minimum number of replies between users to be included in the graph")
     parser.add_argument("--seed", type=int, help="Seed for graph layout. If omitted, a random seed is used")
+    parser.add_argument("--max-nodes", type=int, default=30, help="Maximum number of top users (by message count) to include in the graph")
+    parser.add_argument("--min-replies", type=int, default=1, help="Minimum number of replies required to draw an edge")
     parser.add_argument(
         "--nickname-file",
         help="Path to file with nickname overrides. Each line should be: user_id nickname (nickname can contain spaces)"
@@ -91,8 +91,6 @@ def main():
     user_names = {}
     user_message_counts = {}
 
-    raw_names = {}
-
     with open(args.csv_filename, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
@@ -133,13 +131,13 @@ def main():
 
     user_names.update(nickname_overrides)
 
-    filtered_users = {user: count for user, count in user_message_counts.items() if count >= args.min_messages}
+    sorted_users = sorted(user_message_counts.items(), key=lambda x: x[1], reverse=True)
+    filtered_user_ids = set(uid for uid, _ in sorted_users[:args.max_nodes])
     max_messages = max(user_message_counts.values(), default=1)
-    max_replies = max(reply_counts.values(), default=1)
 
     G = nx.Graph()
     for (u1, u2), count in reply_counts.items():
-        if count < args.min_replies or u1 not in filtered_users or u2 not in filtered_users:
+        if count < args.min_replies or u1 not in filtered_user_ids or u2 not in filtered_user_ids:
             continue
         name1 = user_names.get(u1, u1)
         name2 = user_names.get(u2, u2)
@@ -148,7 +146,7 @@ def main():
     node_sizes = []
     for user in G.nodes():
         user_id = next((uid for uid, name in user_names.items() if name == user), None)
-        node_size = user_message_counts.get(user_id, 0) / max_messages * 3000 if user_id in filtered_users else 0
+        node_size = user_message_counts.get(user_id, 0) / max_messages * 3000 if user_id in filtered_user_ids else 0
         node_sizes.append(node_size)
 
     edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
