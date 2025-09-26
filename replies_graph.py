@@ -146,7 +146,7 @@ def main():
     node_sizes = []
     for user in G.nodes():
         user_id = next((uid for uid, name in user_names.items() if name == user), None)
-        node_size = user_message_counts.get(user_id, 0) / max_messages * 3000 if user_id in filtered_user_ids else 0
+        node_size = user_message_counts.get(user_id, 0) / max_messages * 2000 if user_id in filtered_user_ids else 0
         node_sizes.append(node_size)
 
     edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
@@ -160,7 +160,7 @@ def main():
 
     seed = args.seed if args.seed is not None else random.randint(0, 99999)
     print(f"Using layout seed: {seed}")
-    pos = nx.spring_layout(G, seed=seed, k=5)
+    pos = nx.spring_layout(G, seed=seed, k=7)
 
     csv_dir = os.path.dirname(args.csv_filename)
     base_name = os.path.splitext(os.path.basename(args.csv_filename))[0]
