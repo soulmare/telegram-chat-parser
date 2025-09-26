@@ -1,2 +1,3 @@
 venv/
 nicknames.txt.example
+.venv/
