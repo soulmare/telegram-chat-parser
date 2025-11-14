@@ -8,8 +8,8 @@ pip install -r requirements.txt
 ## Usage
 ```bash
 # Two-step process of building a replies graph
-python3 messages_to_csv.py data/2025-26-04_14-05-AA.json > data/2025-26-04_14-05-AA.csv
-python3 replies_graph.py --min-replies 17 --from-date '2025-05-15' --nickname-file data/nicknames.txt data/2025-05-24-AA.csv
+python3 messages_to_replies_data.py data/2025-09-27_2025-11-13-AA.json --nickname-file data/nicknames.txt --mirror --min-replies 25 --min-count-perc 10 > data/2025-09-27_2025-11-13-AA.replies_data.csv
+python3 replies_graph.py data/2025-09-27_2025-11-13-AA.replies_data.csv --from-id-field user1_id --from-name-field user1_name --reply-id-field user2_id --reply-name-field user2_name --weight-field messages_count
 
 # Other tools
 python3 users_counts_graph.py --period month --begin '2024-06-01' --min 1000 --include-others --output data/chart.png data/2025-04-04-AA.json

@@ -14,17 +14,14 @@ MAX_LINE_LENGTH = 10
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Build and plot a user reply graph from Telegram CSV data.")
-    parser.add_argument("csv_filename", help="Path to the CSV file generated from Telegram JSON")
+    parser.add_argument("csv_filename", help="Path to the CSV file (grouped edges, flexible columns)")
+    parser.add_argument("--from-id-field", required=True, help="CSV column for first user id")
+    parser.add_argument("--from-name-field", required=True, help="CSV column for first user name")
+    parser.add_argument("--reply-id-field", required=True, help="CSV column for second user id")
+    parser.add_argument("--reply-name-field", required=True, help="CSV column for second user name")
+    parser.add_argument("--weight-field", required=True, help="CSV column for edge weight (messages count)")
     parser.add_argument("--show-edge-labels", action="store_true", help="Display edge labels with reply counts")
-    parser.add_argument("--from-date", type=str, help="Start date (inclusive) in YYYY-MM-DD format")
-    parser.add_argument("--to-date", type=str, help="End date (inclusive) in YYYY-MM-DD format")
     parser.add_argument("--seed", type=int, help="Seed for graph layout. If omitted, a random seed is used")
-    parser.add_argument("--max-nodes", type=int, default=30, help="Maximum number of top users (by message count) to include in the graph")
-    parser.add_argument("--min-replies", type=int, default=1, help="Minimum number of replies required to draw an edge")
-    parser.add_argument(
-        "--nickname-file",
-        help="Path to file with nickname overrides. Each line should be: user_id nickname (nickname can contain spaces)"
-    )
     return parser.parse_args()
 
 def sanitize_text(nickname: str, user_id: str) -> str:
@@ -65,88 +62,62 @@ def wrap_nickname(nickname: str, max_len: int) -> str:
 def main():
     args = parse_args()
 
-    from_date = datetime.strptime(args.from_date, "%Y-%m-%d") if args.from_date else None
-    to_date = datetime.strptime(args.to_date, "%Y-%m-%d") if args.to_date else None
 
-    nickname_overrides = {}
-    if args.nickname_file:
-        try:
-            with open(args.nickname_file, encoding='utf-8') as f:
-                for line_num, line in enumerate(f, 1):
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    parts = stripped.split()
-                    if len(parts) < 2:
-                        print(f"Warning: Line {line_num} in nickname file is invalid: {stripped}")
-                        continue
-                    user_id = parts[0]
-                    nickname = " ".join(parts[1:]).replace("\\n", "\n")
-                    nickname_overrides[user_id] = nickname
-        except Exception as e:
-            print(f"Error reading nickname file: {e}")
-            return
+    # Mapping fields from arguments
+    from_id_field = args.from_id_field
+    from_name_field = args.from_name_field
+    reply_id_field = args.reply_id_field
+    reply_name_field = args.reply_name_field
+    weight_field = args.weight_field
 
-    reply_counts = {}
+    edge_map = {}  # key: tuple(sorted([id1, id2])) -> weight
     user_names = {}
     user_message_counts = {}
 
     with open(args.csv_filename, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            msg_date_str = row.get("date")
-            if not msg_date_str:
-                continue
+            id1 = row.get(from_id_field)
+            name1 = row.get(from_name_field) or id1
+            id2 = row.get(reply_id_field)
+            name2 = row.get(reply_name_field) or id2
             try:
-                msg_date = datetime.fromisoformat(msg_date_str)
-            except ValueError:
+                weight = int(row.get(weight_field, 1))
+            except Exception:
+                weight = 1
+
+            if not id1 or not id2 or id1 == id2:
                 continue
-            if from_date and msg_date < from_date:
-                continue
-            if to_date and msg_date > to_date:
-                continue
 
-            from_id = row.get("from_id")
-            from_name = row.get("from")
-            reply_user_id = row.get("reply_user_id")
+            # Sanitize and store names
+            if id1 not in user_names:
+                clean_name1 = sanitize_text(name1, id1)
+                user_names[id1] = wrap_nickname(clean_name1, MAX_LINE_LENGTH)
+            if id2 not in user_names:
+                clean_name2 = sanitize_text(name2, id2)
+                user_names[id2] = wrap_nickname(clean_name2, MAX_LINE_LENGTH)
 
-            if not from_id:
-                continue
-            user_message_counts[from_id] = user_message_counts.get(from_id, 0) + 1
+            # Count messages for node sizing
+            user_message_counts[id1] = user_message_counts.get(id1, 0) + weight
+            user_message_counts[id2] = user_message_counts.get(id2, 0) + weight
 
-            if from_id not in user_names and from_id not in nickname_overrides:
-                raw_name = from_name or from_id
-                clean_name = sanitize_text(raw_name, from_id)
-                user_names[from_id] = wrap_nickname(clean_name, MAX_LINE_LENGTH)
+            # Bidirectional edge: use sorted tuple as key
+            key = tuple(sorted([id1, id2]))
+            edge_map[key] = edge_map.get(key, 0) + weight
 
-            if reply_user_id and reply_user_id != from_id:
-                if reply_user_id not in user_names and reply_user_id not in nickname_overrides:
-                    reply_user_name = row.get("reply_user_name")
-                    if reply_user_name:
-                        clean_reply = sanitize_text(reply_user_name, reply_user_id)
-                        user_names[reply_user_id] = wrap_nickname(clean_reply, MAX_LINE_LENGTH)
-
-                key = tuple(sorted((from_id, reply_user_id)))
-                reply_counts[key] = reply_counts.get(key, 0) + 1
-
-    user_names.update(nickname_overrides)
-
-    sorted_users = sorted(user_message_counts.items(), key=lambda x: x[1], reverse=True)
-    filtered_user_ids = set(uid for uid, _ in sorted_users[:args.max_nodes])
-    max_messages = max(user_message_counts.values(), default=1)
-
+    # Build graph
     G = nx.Graph()
-    for (u1, u2), count in reply_counts.items():
-        if count < args.min_replies or u1 not in filtered_user_ids or u2 not in filtered_user_ids:
-            continue
-        name1 = user_names.get(u1, u1)
-        name2 = user_names.get(u2, u2)
-        G.add_edge(name1, name2, weight=count)
+    for (id1, id2), weight in edge_map.items():
+        name1 = user_names.get(id1, id1)
+        name2 = user_names.get(id2, id2)
+        G.add_edge(name1, name2, weight=weight)
 
+    # Node sizes by total messages
+    max_messages = max(user_message_counts.values(), default=1)
     node_sizes = []
     for user in G.nodes():
         user_id = next((uid for uid, name in user_names.items() if name == user), None)
-        node_size = user_message_counts.get(user_id, 0) / max_messages * 2000 if user_id in filtered_user_ids else 0
+        node_size = user_message_counts.get(user_id, 0) / max_messages * 2000 if user_id else 0
         node_sizes.append(node_size)
 
     edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
