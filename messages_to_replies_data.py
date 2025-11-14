@@ -14,7 +14,8 @@ def parse_args():
     parser.add_argument("--max-nodes", type=int, default=0, help="Maximum number of top users (by message count) to include in the result")
     parser.add_argument("--min-replies", type=int, default=1, help="Minimum number of replies required to include a line in the result")
     parser.add_argument("--nickname-file", help="Path to file with nickname overrides. Each line should be: user_id nickname (nickname can contain spaces)")
-    parser.add_argument("--twice", action="store_true", help="Output each line twice, exchanging users order")
+    parser.add_argument("--mirror", action="store_true", help="Output each line twice, exchanging users order")
+    parser.add_argument("--min-count-perc", type=float, default=0, help="Minimum percentage (0-100) of messages_count to user1 or user2 total messages to include row. If 0, disables this filter.")
     return parser.parse_args()
 
 
@@ -140,10 +141,12 @@ def main():
             pair["last_message_datetime"] = msg_time
 
     # ---- OUTPUT ----
+
     writer = csv.DictWriter(sys.stdout, fieldnames=[
-        "user1_id", "user1_name", "user1_messages_count", "user1_messages_total_length",
-        "user2_id", "user2_name", "user2_messages_count", "user2_messages_total_length",
+        "user1_id", "user1_name", "user1_messages_count", "user1_messages_total_length", "user1_messages_count_perc",
+        "user2_id", "user2_name", "user2_messages_count", "user2_messages_total_length", "user2_messages_count_perc",
         "messages_count", "messages_total_length",
+        "messages_count_perc",
         "first_message_datetime", "last_message_datetime",
     ])
     writer.writeheader()
@@ -152,34 +155,52 @@ def main():
         if stats["messages_count"] < args.min_replies:
             continue
 
+        user1_total = user_stats[user1]["count"]
+        user2_total = user_stats[user2]["count"]
+        # Avoid division by zero
+        user1_perc = (stats["messages_count"] / user1_total * 100) if user1_total > 0 else 0
+        user2_perc = (stats["messages_count"] / user2_total * 100) if user2_total > 0 else 0
+        messages_count_perc = max(user1_perc, user2_perc)
+
+        # Filtering by min-count-perc (now using messages_count_perc)
+        if args.min_count_perc > 0:
+            if messages_count_perc <= args.min_count_perc:
+                continue
+
         row = {
             "user1_id": user1,
             "user1_name": user_stats[user1]["name"],
-            "user1_messages_count": user_stats[user1]["count"],
+            "user1_messages_count": user1_total,
             "user1_messages_total_length": user_stats[user1]["length"],
+            "user1_messages_count_perc": f"{user1_perc:.2f}",
             "user2_id": user2,
             "user2_name": user_stats[user2]["name"],
-            "user2_messages_count": user_stats[user2]["count"],
+            "user2_messages_count": user2_total,
             "user2_messages_total_length": user_stats[user2]["length"],
+            "user2_messages_count_perc": f"{user2_perc:.2f}",
             "messages_count": stats["messages_count"],
             "messages_total_length": stats["messages_total_length"],
+            "messages_count_perc": f"{messages_count_perc:.2f}",
             "first_message_datetime": stats["first_message_datetime"].strftime("%Y-%m-%d %H:%M:%S") if stats["first_message_datetime"] else "",
             "last_message_datetime": stats["last_message_datetime"].strftime("%Y-%m-%d %H:%M:%S") if stats["last_message_datetime"] else "",
         }
 
         writer.writerow(row)
 
-        if args.twice:
+        if args.mirror:
             swapped = row.copy()
             swapped.update({
                 "user1_id": row["user2_id"],
                 "user1_name": row["user2_name"],
                 "user1_messages_count": row["user2_messages_count"],
                 "user1_messages_total_length": row["user2_messages_total_length"],
+                "user1_messages_count_perc": row["user2_messages_count_perc"],
                 "user2_id": row["user1_id"],
                 "user2_name": row["user1_name"],
                 "user2_messages_count": row["user1_messages_count"],
                 "user2_messages_total_length": row["user1_messages_total_length"],
+                "user2_messages_count_perc": row["user1_messages_count_perc"],
+                # messages_count_perc is still the max of the two, so remains the same
             })
             writer.writerow(swapped)
 
