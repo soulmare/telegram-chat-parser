@@ -127,12 +127,12 @@ def main():
         else:
             user1, user2 = uid_b, uid_a
 
+
         pair = pairs[(user1, user2)]
         pair["messages_count"] += 1
 
-        # Count replies for both users (replies to or from)
+        # Count replies only for the user who sent the reply
         user_stats[uid_a]["replies_count"] += 1
-        user_stats[uid_b]["replies_count"] += 1
 
         text = msg.get("text", "")
         if isinstance(text, list):
@@ -146,6 +146,9 @@ def main():
 
     # ---- OUTPUT ----
 
+    # Prepare to collect filtered nodes
+    filtered_nodes = set()
+
     writer = csv.DictWriter(sys.stdout, fieldnames=[
         "user1_id", "user1_name", "user1_messages_count", "user1_replies_count", "user1_messages_total_length", "user1_messages_count_perc",
         "user2_id", "user2_name", "user2_messages_count", "user2_replies_count", "user2_messages_total_length", "user2_messages_count_perc",
@@ -155,6 +158,7 @@ def main():
     ])
     writer.writeheader()
 
+    filtered_edges = 0
     for (user1, user2), stats in pairs.items():
         if stats["messages_count"] < args.min_replies:
             continue
@@ -194,6 +198,9 @@ def main():
         }
 
         writer.writerow(row)
+        filtered_edges += 1
+        filtered_nodes.add(user1)
+        filtered_nodes.add(user2)
 
         if args.mirror:
             swapped = row.copy()
@@ -213,6 +220,12 @@ def main():
                 # messages_count_perc is still the max of the two, so remains the same
             })
             writer.writerow(swapped)
+            filtered_edges += 1
+            filtered_nodes.add(row["user2_id"])
+            filtered_nodes.add(row["user1_id"])
+
+    print(f"Nodes count: {len(filtered_nodes)}", file=sys.stderr)
+    print(f"Edges count: {filtered_edges}", file=sys.stderr)
 
 
 if __name__ == "__main__":
