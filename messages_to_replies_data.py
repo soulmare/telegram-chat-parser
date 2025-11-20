@@ -45,7 +45,7 @@ def main():
     messages = data.get("messages", [])
 
     # Per-user stats (messages inside date range only)
-    user_stats = defaultdict(lambda: {"count": 0, "length": 0, "name": None})
+    user_stats = defaultdict(lambda: {"count": 0, "length": 0, "name": None, "replies_count": 0})
 
     # Reply stats between pairs
     pairs = defaultdict(lambda: {
@@ -130,6 +130,10 @@ def main():
         pair = pairs[(user1, user2)]
         pair["messages_count"] += 1
 
+        # Count replies for both users (replies to or from)
+        user_stats[uid_a]["replies_count"] += 1
+        user_stats[uid_b]["replies_count"] += 1
+
         text = msg.get("text", "")
         if isinstance(text, list):
             text = "".join(part if isinstance(part, str) else part.get("text", "") for part in text)
@@ -143,8 +147,8 @@ def main():
     # ---- OUTPUT ----
 
     writer = csv.DictWriter(sys.stdout, fieldnames=[
-        "user1_id", "user1_name", "user1_messages_count", "user1_messages_total_length", "user1_messages_count_perc",
-        "user2_id", "user2_name", "user2_messages_count", "user2_messages_total_length", "user2_messages_count_perc",
+        "user1_id", "user1_name", "user1_messages_count", "user1_replies_count", "user1_messages_total_length", "user1_messages_count_perc",
+        "user2_id", "user2_name", "user2_messages_count", "user2_replies_count", "user2_messages_total_length", "user2_messages_count_perc",
         "messages_count", "messages_total_length",
         "messages_count_perc",
         "first_message_datetime", "last_message_datetime",
@@ -157,9 +161,11 @@ def main():
 
         user1_total = user_stats[user1]["count"]
         user2_total = user_stats[user2]["count"]
-        # Avoid division by zero
-        user1_perc = (stats["messages_count"] / user1_total * 100) if user1_total > 0 else 0
-        user2_perc = (stats["messages_count"] / user2_total * 100) if user2_total > 0 else 0
+        user1_replies = user_stats[user1]["replies_count"]
+        user2_replies = user_stats[user2]["replies_count"]
+        # Avoid division by zero for replies
+        user1_perc = (stats["messages_count"] / user1_replies * 100) if user1_replies > 0 else 0
+        user2_perc = (stats["messages_count"] / user2_replies * 100) if user2_replies > 0 else 0
         messages_count_perc = max(user1_perc, user2_perc)
 
         # Filtering by min-count-perc (now using messages_count_perc)
@@ -171,11 +177,13 @@ def main():
             "user1_id": user1,
             "user1_name": user_stats[user1]["name"],
             "user1_messages_count": user1_total,
+            "user1_replies_count": user1_replies,
             "user1_messages_total_length": user_stats[user1]["length"],
             "user1_messages_count_perc": f"{user1_perc:.2f}",
             "user2_id": user2,
             "user2_name": user_stats[user2]["name"],
             "user2_messages_count": user2_total,
+            "user2_replies_count": user2_replies,
             "user2_messages_total_length": user_stats[user2]["length"],
             "user2_messages_count_perc": f"{user2_perc:.2f}",
             "messages_count": stats["messages_count"],
@@ -193,11 +201,13 @@ def main():
                 "user1_id": row["user2_id"],
                 "user1_name": row["user2_name"],
                 "user1_messages_count": row["user2_messages_count"],
+                "user1_replies_count": row["user2_replies_count"],
                 "user1_messages_total_length": row["user2_messages_total_length"],
                 "user1_messages_count_perc": row["user2_messages_count_perc"],
                 "user2_id": row["user1_id"],
                 "user2_name": row["user1_name"],
                 "user2_messages_count": row["user1_messages_count"],
+                "user2_replies_count": row["user1_replies_count"],
                 "user2_messages_total_length": row["user1_messages_total_length"],
                 "user2_messages_count_perc": row["user1_messages_count_perc"],
                 # messages_count_perc is still the max of the two, so remains the same
