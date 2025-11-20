@@ -22,6 +22,9 @@ def parse_args():
     parser.add_argument("--weight-field", required=True, help="CSV column for edge weight (messages count)")
     parser.add_argument("--show-edge-labels", action="store_true", help="Display edge labels with reply counts")
     parser.add_argument("--seed", type=int, help="Seed for graph layout. If omitted, a random seed is used")
+    parser.add_argument("--layout-k", type=float, default=6.0, help="Optimal node spacing (default: 6.0)")
+    parser.add_argument("--layout-scale", type=float, default=1.0, help="Overall layout scale (default: 1.0)")
+    parser.add_argument("--layout-iter", type=int, default=50, help="Number of layout iterations (default: 50)")
     return parser.parse_args()
 
 def sanitize_text(nickname: str, user_id: str) -> str:
@@ -131,11 +134,30 @@ def main():
 
     seed = args.seed if args.seed is not None else random.randint(0, 99999)
     print(f"Using layout seed: {seed}")
-    pos = nx.spring_layout(G, seed=seed, k=7)
 
-    csv_dir = os.path.dirname(args.csv_filename)
+    # Layout tuning parameters from arguments
+    layout_k = args.layout_k
+    layout_scale = args.layout_scale
+    layout_iter = args.layout_iter
+
+    pos = nx.spring_layout(
+        G,
+        k=layout_k,
+        scale=layout_scale,
+        iterations=layout_iter,
+        seed=seed,
+    )
+
+
+    # Directory based on base source file name
     base_name = os.path.splitext(os.path.basename(args.csv_filename))[0]
-    output_filename = os.path.join(csv_dir, f"{base_name}_seed{seed}.png")
+    output_dir = os.path.join(os.path.dirname(args.csv_filename), base_name)
+    os.makedirs(output_dir, exist_ok=True)
+    # Add all layout parameters to the output filename, with new format
+    output_filename = os.path.join(
+        output_dir,
+        f"replies_graph.seed-{seed}_k-{layout_k}_scale-{layout_scale}_iter-{layout_iter}.png"
+    )
 
     plt.figure(figsize=(10, 8))
     nx.draw(G, pos, with_labels=True, node_size=node_sizes, node_color=NODE_COLOR,
