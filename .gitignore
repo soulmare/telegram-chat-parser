@@ -1,3 +1,4 @@
 venv/
 nicknames.txt.example
 .venv/
+.vscode/
