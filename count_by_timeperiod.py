@@ -70,6 +70,8 @@ def count_stats(time_unit, json_filename, filter_from_id=None):
     time_counts = defaultdict(int)
     time_users = defaultdict(set)
 
+    messages = []
+
     for message in data.get("messages", []):
         if filter_from_id and message.get("from_id") != filter_from_id:
             continue
@@ -79,22 +81,42 @@ def count_stats(time_unit, json_filename, filter_from_id=None):
             continue
 
         dt = datetime.fromisoformat(timestamp)
-        time_key = get_time_key(dt, time_unit)
+        messages.append((dt, message))
 
+        time_key = get_time_key(dt, time_unit)
         time_counts[time_key] += 1
 
         from_id = message.get("from_id")
         if from_id:
             time_users[time_key].add(from_id)
 
+    messages.sort(key=lambda x: x[0])
+
+    total_users_by_period = {}
+    seen_users = set()
+
+    for dt, message in messages:
+        from_id = message.get("from_id")
+        if from_id:
+            seen_users.add(from_id)
+
+        time_key = get_time_key(dt, time_unit)
+        total_users_by_period[time_key] = len(seen_users)
+
     writer = csv.writer(sys.stdout)
-    writer.writerow(["time", "messages_count", "active_users"])
+    writer.writerow([
+        "time",
+        "messages_count",
+        "active_users",
+        "total_users"
+    ])
 
     for time_key in sorted(time_counts.keys()):
         writer.writerow([
             time_key,
             time_counts[time_key],
-            len(time_users[time_key])
+            len(time_users[time_key]),
+            total_users_by_period.get(time_key, 0)
         ])
 
 if __name__ == "__main__":
